@@ -1,4 +1,5 @@
 use crate::{coord, CoordNum, Point};
+use std::marker::PhantomData;
 
 #[cfg(any(feature = "approx", test))]
 use approx::{AbsDiffEq, RelativeEq, UlpsEq};
@@ -31,12 +32,14 @@ use approx::{AbsDiffEq, RelativeEq, UlpsEq};
 /// let coord2 = Coord::new_xy(x: 1.0, y: 2.0);
 /// assert_eq(coord1, coord2) ;
 /// ```
-#[repr(C)]
 #[derive(Eq, PartialEq, Clone, Copy, Debug, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Coord<T: CoordNum> {
-    x: T,
-    y: T,
+pub struct Coord<T: CoordNum, C = CoordXY<T>> {
+    c: C,
+    // we need this to keep the type signature nice, so that the first param (which is required) is
+    // the numeric type of the coord fields - the coord itself (e.g. CoordXY) need not be specified
+    // manually. Which is good, because it's quite verbose!
+    _marker: PhantomData<T>,
 }
 
 #[deprecated(
@@ -46,31 +49,33 @@ pub type Coordinate<T> = Coord<T>;
 
 impl<T: CoordNum> Coord<T> {
     pub fn new_xy(x: T, y: T) -> Self {
-        Self { x, y }
+        Self {
+            c: CoordXY { x, y },
+            _marker: PhantomData,
+        }
     }
 }
 
 // Field Access
 use std::ops::{Deref, DerefMut};
 
-#[repr(C)]
-#[derive(Debug)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash, Default)]
 pub struct CoordXY<T: CoordNum> {
     pub x: T,
     pub y: T,
 }
 
-impl<T: CoordNum> Deref for Coord<T> {
+impl<T: CoordNum> Deref for Coord<T, CoordXY<T>> {
     type Target = CoordXY<T>;
 
     fn deref(&self) -> &Self::Target {
-        unsafe { std::mem::transmute(self) }
+        &self.c
     }
 }
 
 impl<T: CoordNum> DerefMut for Coord<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { std::mem::transmute(self) }
+        &mut self.c
     }
 }
 
