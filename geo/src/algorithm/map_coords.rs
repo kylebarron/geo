@@ -58,7 +58,7 @@ mod modern {
         /// # use approx::assert_relative_eq;
         ///
         /// let p1: Point<f32> = Point::new(10.0f32, 20.0f32);
-        /// let p2: Point = p1.map_coords(|(x, y)| (x as f64, y as f64));
+        /// let p2: Point<f64> = p1.map_coords(|(x, y)| (x as f64, y as f64));
         ///
         /// assert_relative_eq!(p2, Point::new(10.0f64, 20.0f64), epsilon = 1e-6);
         /// ```
@@ -1182,7 +1182,7 @@ mod test {
 
     #[test]
     fn convert_type() {
-        let p1: Point = Point::new(1., 2.);
+        let p1: Point<f64> = Point::new(1., 2.);
         let p2: Point<f32> = p1.map_coords(|(x, y)| (x as f32, y as f32));
         assert_relative_eq!(p2.x(), 1f32);
         assert_relative_eq!(p2.y(), 2f32);
