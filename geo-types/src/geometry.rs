@@ -75,12 +75,11 @@ impl<T: CoordNum> From<MultiPolygon<T>> for Geometry<T> {
     }
 }
 
-// Disabled until we remove the deprecated GeometryCollection::from(single_geom) impl.
-// impl<T: CoordNum> From<GeometryCollection<T>> for Geometry<T> {
-//     fn from(x: GeometryCollection<T>) -> Self {
-//         Self::GeometryCollection(x)
-//     }
-// }
+impl<T: CoordNum> From<GeometryCollection<T>> for Geometry<T> {
+    fn from(x: GeometryCollection<T>) -> Self {
+        Self::GeometryCollection(x)
+    }
+}
 
 impl<T: CoordNum> From<Rect<T>> for Geometry<T> {
     fn from(x: Rect<T>) -> Self {
