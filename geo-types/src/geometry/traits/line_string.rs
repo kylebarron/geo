@@ -1,5 +1,5 @@
 use crate::traits::point::PointTrait;
-use crate::{LineString, Point};
+use crate::{Coordinate, LineString};
 use std::slice::Iter;
 
 pub trait LineStringTrait<'a>: Send + Sync {
@@ -14,11 +14,11 @@ pub trait LineStringTrait<'a>: Send + Sync {
 
     /// Access to a specified point in this LineString
     /// Will return None if the provided index is out of bounds
-    fn point(&'a self, i: usize) -> Option<Self::ItemType>;
+    fn point(&'a self, i: usize) -> Option<&Self::ItemType>;
 }
 
 impl<'a> LineStringTrait<'a> for LineString<f64> {
-    type ItemType = Point;
+    type ItemType = Coordinate;
     type Iter = Iter<'a, Self::ItemType>;
 
     // fn points(&'a self) -> Self::Iter {
@@ -29,8 +29,7 @@ impl<'a> LineStringTrait<'a> for LineString<f64> {
         self.0.len()
     }
 
-    fn point(&'a self, i: usize) -> Option<Self::ItemType> {
-        let p: Point = (self[i].x, self[i].y).into();
-        Some(p)
+    fn point(&'a self, i: usize) -> Option<&Self::ItemType> {
+        self.0.get(i)
     }
 }
