@@ -10,6 +10,8 @@ pub(crate) mod polygon;
 pub(crate) mod rect;
 pub(crate) mod triangle;
 
+pub mod traits;
+
 // re-export all the geometry variants:
 pub use coordinate::Coordinate;
 pub use geometry_collection::GeometryCollection;
