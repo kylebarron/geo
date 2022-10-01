@@ -1,4 +1,6 @@
-use crate::{Coordinate, GeoNum, LineString, MultiLineString, MultiPoint, MultiPolygon, Polygon};
+use crate::geometry::{Coordinate, LineString, Polygon};
+use crate::kernels::*;
+use crate::GeoNum;
 
 /// Returns the convex hull of a Polygon. The hull is always oriented counter-clockwise.
 ///
@@ -36,65 +38,24 @@ use crate::{Coordinate, GeoNum, LineString, MultiLineString, MultiPoint, MultiPo
 /// let res = poly.convex_hull();
 /// assert_eq!(res.exterior(), &correct_hull);
 /// ```
-pub trait ConvexHull {
+pub trait ConvexHull<'a, T> {
     type Scalar: GeoNum;
-    fn convex_hull(&self) -> Polygon<Self::Scalar>;
+    fn convex_hull(&'a self) -> Polygon<Self::Scalar>;
 }
 
-impl<T> ConvexHull for Polygon<T>
-where
-    T: GeoNum,
-{
-    type Scalar = T;
-    fn convex_hull(&self) -> Polygon<T> {
-        Polygon::new(quick_hull(&mut self.exterior().0.clone()), vec![])
-    }
-}
+use crate::algorithm::CoordsIter;
+use crate::utils::lex_cmp;
 
-impl<T> ConvexHull for MultiPolygon<T>
+impl<'a, T, G> ConvexHull<'a, T> for G
 where
     T: GeoNum,
+    G: CoordsIter<'a, Scalar = T>,
 {
     type Scalar = T;
-    fn convex_hull(&self) -> Polygon<T> {
-        let mut aggregated: Vec<_> = self
-            .0
-            .iter()
-            .flat_map(|elem| elem.exterior().0.iter().copied())
-            .collect();
-        Polygon::new(quick_hull(&mut aggregated), vec![])
-    }
-}
 
-impl<T> ConvexHull for LineString<T>
-where
-    T: GeoNum,
-{
-    type Scalar = T;
-    fn convex_hull(&self) -> Polygon<T> {
-        Polygon::new(quick_hull(&mut self.0.clone()), vec![])
-    }
-}
-
-impl<T> ConvexHull for MultiLineString<T>
-where
-    T: GeoNum,
-{
-    type Scalar = T;
-    fn convex_hull(&self) -> Polygon<T> {
-        let mut aggregated: Vec<_> = self.iter().flat_map(|elem| elem.clone().0).collect();
-        Polygon::new(quick_hull(&mut aggregated), vec![])
-    }
-}
-
-impl<T> ConvexHull for MultiPoint<T>
-where
-    T: GeoNum,
-{
-    type Scalar = T;
-    fn convex_hull(&self) -> Polygon<T> {
-        let mut aggregated: Vec<_> = self.iter().map(|p| p.0).collect();
-        Polygon::new(quick_hull(&mut aggregated), vec![])
+    fn convex_hull(&'a self) -> Polygon<T> {
+        let mut exterior: Vec<_> = self.exterior_coords_iter().collect();
+        Polygon::new(quick_hull(&mut exterior), vec![])
     }
 }
 
@@ -118,7 +79,10 @@ where
     // are to be included.
     let mut ls: Vec<Coordinate<T>> = points.to_vec();
     if !include_on_hull {
-        ls.dedup();
+        ls.sort_unstable_by(lex_cmp);
+        if ls.len() == 3 && T::Ker::orient2d(ls[0], ls[1], ls[2]) == Orientation::Collinear {
+            ls.remove(1);
+        }
     }
 
     // A linestring with a single point is invalid.
@@ -147,4 +111,206 @@ fn swap_remove_to_first<'a, T>(slice: &mut &'a mut [T], idx: usize) -> &'a mut T
 }
 
 #[cfg(test)]
-mod test;
+mod test {
+    use super::*;
+    use crate::coord;
+
+    #[test]
+    fn test_zero_points() {
+        let mut v: Vec<Coordinate<i64>> = vec![];
+        let correct = vec![];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_zero_points_include_on_hull() {
+        let mut v: Vec<Coordinate<i64>> = vec![];
+        let correct = vec![];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_one_point() {
+        let mut v = vec![coord! { x: 0, y: 0 }];
+        let correct = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_one_point_include_on_hull() {
+        let mut v = vec![coord! { x: 0, y: 0 }];
+        let correct = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_two_points() {
+        let mut v = vec![coord! { x: 0, y: 0 }, coord! { x: 1, y: 1 }];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_two_points_include_on_hull() {
+        let mut v = vec![coord! { x: 0, y: 0 }, coord! { x: 1, y: 1 }];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_two_points_duplicated() {
+        let mut v = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let correct = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_two_points_duplicated_include_on_hull() {
+        let mut v = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let correct = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_points_ccw() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 0 },
+            coord! { x: 1, y: 1 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_points_cw() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 1, y: 0 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_points_two_duplicated() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_points_two_duplicated_include_on_hull() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_points_duplicated() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 0, y: 0 },
+            coord! { x: 0, y: 0 },
+        ];
+        let correct = vec![coord! { x: 0, y: 0 }, coord! { x: 0, y: 0 }];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_points_duplicated_include_on_hull() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 0, y: 0 },
+            coord! { x: 0, y: 0 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 0, y: 0 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_collinear_points() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 2, y: 2 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 2, y: 2 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, false);
+        assert_eq!(res.0, correct);
+    }
+
+    #[test]
+    fn test_three_collinear_points_include_on_hull() {
+        let mut v = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 2, y: 2 },
+        ];
+        let correct = vec![
+            coord! { x: 0, y: 0 },
+            coord! { x: 1, y: 1 },
+            coord! { x: 2, y: 2 },
+            coord! { x: 0, y: 0 },
+        ];
+        let res = trivial_hull(&mut v, true);
+        assert_eq!(res.0, correct);
+    }
+}

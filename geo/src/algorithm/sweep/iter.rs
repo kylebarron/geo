@@ -1,4 +1,4 @@
-use std::borrow::Borrow;
+use std::cmp::Ordering;
 
 use super::*;
 use crate::{line_intersection::line_intersection, Coordinate, LineIntersection};
@@ -42,15 +42,25 @@ pub(crate) struct Crossing<C: Cross> {
     pub(super) segment: IMSegment<C>,
 }
 
+pub(crate) fn compare_crossings<X: Cross>(a: &Crossing<X>, b: &Crossing<X>) -> Ordering {
+    a.at_left.cmp(&b.at_left).then_with(|| {
+        let ord = a.segment.partial_cmp(&b.segment).unwrap();
+        if a.at_left {
+            ord
+        } else {
+            ord.reverse()
+        }
+    })
+}
+
 impl<C: Cross + Clone> Crossing<C> {
     /// Convert `self` into a `Crossing` to return to user.
     pub(super) fn from_segment(segment: &IMSegment<C>, event_ty: EventType) -> Crossing<C> {
-        let seg: &Segment<_> = segment.borrow();
         Crossing {
-            cross: seg.cross.clone(),
-            line: seg.geom,
-            first_segment: seg.first_segment,
-            has_overlap: seg.overlapping.is_some(),
+            cross: segment.cross_cloned(),
+            line: segment.geom(),
+            first_segment: segment.is_first_segment(),
+            has_overlap: segment.is_overlapping(),
             at_left: event_ty == EventType::LineLeft,
             segment: segment.clone(),
         }
@@ -102,6 +112,12 @@ impl<C> CrossingsIter<C>
 where
     C: Cross + Clone,
 {
+    /// Faster sweep when input goemetries are known to not intersect except at
+    /// end-points.
+    pub fn new_simple<I: IntoIterator<Item = C>>(iter: I) -> Self {
+        Self::new_ex(iter, true)
+    }
+
     /// Returns the segments that intersect the last point yielded by
     /// the iterator.
     pub fn intersections_mut(&mut self) -> &mut [Crossing<C>] {
@@ -112,8 +128,20 @@ where
         &self.segments
     }
 
-    pub(crate) fn prev_active(&self, c: &Crossing<C>) -> Option<(LineOrPoint<C::Scalar>, &C)> {
-        self.sweep.prev_active(c).map(|s| (s.geom, &s.cross))
+    pub(crate) fn prev_active(&self, c: &Crossing<C>) -> Option<(LineOrPoint<C::Scalar>, C)> {
+        self.sweep
+            .with_prev_active(c, |s| (s.geom, s.cross.clone()))
+    }
+
+    fn new_ex<T: IntoIterator<Item = C>>(iter: T, is_simple: bool) -> Self {
+        let iter = iter.into_iter();
+        let size = {
+            let (min_size, max_size) = iter.size_hint();
+            max_size.unwrap_or(min_size)
+        };
+        let sweep = Sweep::new(iter, is_simple);
+        let segments = Vec::with_capacity(4 * size);
+        Self { sweep, segments }
     }
 }
 
@@ -122,14 +150,7 @@ where
     C: Cross + Clone,
 {
     fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
-        let iter = iter.into_iter();
-        let size = {
-            let (min_size, max_size) = iter.size_hint();
-            max_size.unwrap_or(min_size)
-        };
-        let sweep = Sweep::new(iter);
-        let segments = Vec::with_capacity(4 * size);
-        Self { sweep, segments }
+        Self::new_ex(iter, false)
     }
 }
 
@@ -149,7 +170,7 @@ where
             last_point = self.sweep.next_event(|seg, ty| {
                 trace!(
                     "cb: {seg:?} {ty:?} (crossable = {cross:?})",
-                    cross = seg.cross().line()
+                    cross = seg.cross_cloned().line()
                 );
                 segments.push(Crossing::from_segment(seg, ty))
             });

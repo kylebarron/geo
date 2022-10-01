@@ -1,83 +1,94 @@
 use std::{cell::Cell, cmp::Ordering, fmt::Debug};
 
-use super::{assembly::Assembly, *};
+use super::{MultiPolygon, Spec};
 use crate::{
-    sweep::{Cross, Crossing, CrossingsIter, LineOrPoint},
+    sweep::{compare_crossings, Cross, Crossing, CrossingsIter, LineOrPoint, SweepPoint},
     CoordsIter, GeoFloat as Float, LineString, Polygon,
 };
 
 #[derive(Debug, Clone)]
-pub struct Op<T: Float> {
-    ty: OpType,
-    edges: Vec<Edge<T>>,
+pub struct Proc<T: Float, S: Spec<T>> {
+    spec: S,
+    edges: Vec<Edge<T, S>>,
 }
 
-impl<T: Float> Op<T> {
-    pub fn new(ty: OpType, capacity: usize) -> Self {
-        Op {
-            ty,
+impl<T: Float, S: Spec<T>> Proc<T, S> {
+    pub fn new(spec: S, capacity: usize) -> Self {
+        Proc {
+            spec,
             edges: Vec::with_capacity(capacity),
         }
     }
 
-    // is_first -> whether it is from first input or second input
-    pub(crate) fn add_multi_polygon(&mut self, mp: &MultiPolygon<T>, is_first: bool) {
-        mp.0.iter().for_each(|p| self.add_polygon(p, is_first));
+    // idx: whether it is from first input or second input
+    pub(crate) fn add_multi_polygon(&mut self, mp: &MultiPolygon<T>, idx: usize) {
+        mp.0.iter().for_each(|p| self.add_polygon(p, idx));
     }
 
-    // is_first -> whether it is from first input or second input
-    pub(crate) fn add_polygon(&mut self, poly: &Polygon<T>, is_first: bool) {
-        self.add_closed_ring(poly.exterior(), is_first, false);
+    // idx: whether it is from first input or second input
+    pub(crate) fn add_polygon(&mut self, poly: &Polygon<T>, idx: usize) {
+        self.add_closed_ring(poly.exterior(), idx, false);
         for hole in poly.interiors() {
-            self.add_closed_ring(hole, is_first, true);
+            self.add_closed_ring(hole, idx, true);
         }
     }
-    // is_first -> whether it is from first input or second input
-    // _is_hole is not used rn; remove it once we fully handle fp issues
-    fn add_closed_ring(&mut self, ring: &LineString<T>, is_first: bool, _is_hole: bool) {
-        assert!(ring.is_closed());
-        if ring.coords_count() <= 3 {
-            return;
-        }
 
-        for line in ring.lines() {
+    pub(crate) fn add_line_string(&mut self, ls: &LineString<T>, idx: usize) {
+        for line in ls.lines() {
             let lp: LineOrPoint<_> = line.into();
             if !lp.is_line() {
                 continue;
             }
 
             debug!("processing: {lp:?}");
-
-            let region = Region::infinity(self.ty);
+            let region = self.spec.infinity();
             self.edges.push(Edge {
                 geom: lp,
-                is_first,
+                idx,
                 _region: region.into(),
                 _region_2: region.into(),
             });
         }
     }
 
-    pub fn sweep(&self) -> MultiPolygon<T> {
+    // idx: whether it is from first input or second input
+    // _is_hole is not used rn; remove it once we fully handle fp issues
+    fn add_closed_ring(&mut self, ring: &LineString<T>, idx: usize, _is_hole: bool) {
+        assert!(ring.is_closed());
+        if ring.coords_count() <= 3 {
+            return;
+        }
+
+        self.add_line_string(ring, idx);
+    }
+
+    pub fn sweep(mut self) -> S::Output {
         let mut iter = CrossingsIter::from_iter(self.edges.iter());
-        let mut output = Assembly::default();
 
         while let Some(pt) = iter.next() {
-            trace!(
+            debug!(
                 "\n\nSweep point: {pt:?}, {n} intersection segments",
-                n = iter.intersections_mut().len()
+                n = iter.intersections_mut().len(),
+                pt = SweepPoint::from(pt),
             );
             iter.intersections_mut().sort_unstable_by(compare_crossings);
+
+            for (idx, it) in iter.intersections().iter().enumerate() {
+                let it: &Crossing<_> = it;
+                trace!("{idx}: {geom:?} of {cr:?}", geom = it.line, cr = it.cross);
+            }
 
             // Process all end-segments.
             let mut idx = 0;
             let mut next_region = None;
+            trace!("end segments:");
             while idx < iter.intersections().len() {
                 let c = &iter.intersections()[idx];
                 // If we hit a start-segment, we are done.
                 if c.at_left {
                     break;
                 }
+                trace!("{idx}: {geom:?}", geom = c.line);
                 let cross = c.cross;
                 if next_region.is_none() {
                     next_region = Some(cross.get_region(c.line));
@@ -87,21 +98,20 @@ impl<T: Float> Op<T> {
                         geom = c.line,
                     );
                 }
-                next_region.as_mut().unwrap().cross(cross.is_first);
+                next_region = Some(self.spec.cross(next_region.unwrap(), cross.idx));
+                trace!("next_region: {reg:?}", reg = next_region.unwrap());
                 let has_overlap = (idx + 1) < iter.intersections().len()
-                    && compare_crossings(c, &iter.intersections()[idx + 1]) == Ordering::Equal;
+                    && c.line.partial_cmp(&iter.intersections()[idx + 1].line)
+                        == Some(Ordering::Equal);
                 if !has_overlap {
                     let prev_region = cross.get_region(c.line);
-                    trace!(
+                    debug!(
                         "check_add: {geom:?}: {prev_region:?} -> {next_region:?}",
                         geom = c.line,
                         next_region = next_region.unwrap()
                     );
-                    let next_is_ty = next_region.unwrap().is_ty(self.ty);
-                    if prev_region.is_ty(self.ty) ^ next_is_ty {
-                        trace!("\tfull_geom: {geom:?}", geom = c.cross.geom);
-                        output.add_edge(c.line)
-                    }
+                    self.spec
+                        .output([prev_region, next_region.unwrap()], c.line, c.cross.idx);
                     next_region = None;
                 }
                 idx += 1;
@@ -114,8 +124,9 @@ impl<T: Float> Op<T> {
             debug_assert!(botmost_start_segment.at_left);
 
             trace!(
-                "Bottom most start-edge: {botmost:?}",
+                "Bottom most start-edge: {botmost:?} of {cr:?}",
                 botmost = botmost_start_segment.line,
+                cr = botmost_start_segment.cross,
             );
 
             let prev = iter.prev_active(&botmost_start_segment);
@@ -127,16 +138,17 @@ impl<T: Float> Op<T> {
             let mut region = prev
                 .as_ref()
                 .map(|(g, c)| c.get_region(*g))
-                .unwrap_or_else(|| Region::infinity(self.ty));
+                .unwrap_or_else(|| self.spec.infinity());
             trace!("bot region: {region:?}");
 
             while idx < iter.intersections().len() {
                 let mut c = &iter.intersections()[idx];
                 let mut jdx = idx;
                 loop {
-                    region.cross(c.cross.is_first);
+                    region = self.spec.cross(region, c.cross.idx);
                     let has_overlap = (idx + 1) < iter.intersections().len()
-                        && compare_crossings(c, &iter.intersections()[idx + 1]) == Ordering::Equal;
+                        && c.line.partial_cmp(&iter.intersections()[idx + 1].line)
+                            == Some(Ordering::Equal);
                     if !has_overlap {
                         break;
                     }
@@ -157,60 +169,20 @@ impl<T: Float> Op<T> {
                 idx += 1;
             }
         }
-
-        output.finish()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Region {
-    is_first: bool,
-    is_second: bool,
-}
-impl Debug for Region {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[{f}{s}]",
-            f = if self.is_first { "A" } else { "" },
-            s = if self.is_second { "B" } else { "" },
-        )
-    }
-}
-
-impl Region {
-    fn infinity(ty: OpType) -> Self {
-        Region {
-            is_first: false,
-            is_second: matches!(ty, OpType::Difference),
-        }
-    }
-    fn cross(&mut self, first: bool) {
-        if first {
-            self.is_first = !self.is_first;
-        } else {
-            self.is_second = !self.is_second;
-        }
-    }
-    fn is_ty(&self, ty: OpType) -> bool {
-        match ty {
-            OpType::Intersection | OpType::Difference => self.is_first && self.is_second,
-            OpType::Union => self.is_first || self.is_second,
-            OpType::Xor => self.is_first ^ self.is_second,
-        }
+        self.spec.finish()
     }
 }
 
 #[derive(Clone)]
-struct Edge<T: Float> {
+struct Edge<T: Float, S: Spec<T>> {
     geom: LineOrPoint<T>,
-    is_first: bool,
-    _region: Cell<Region>,
-    _region_2: Cell<Region>,
+    idx: usize,
+    _region: Cell<S::Region>,
+    _region_2: Cell<S::Region>,
 }
 
-impl<T: Float> Edge<T> {
-    fn get_region(&self, piece: LineOrPoint<T>) -> Region {
+impl<T: Float, S: Spec<T>> Edge<T, S> {
+    fn get_region(&self, piece: LineOrPoint<T>) -> S::Region {
         // Note: This is related to the ordering of intersection
         // with respect to the complete geometry. Due to
         // finite-precision errors, intersection points might lie
@@ -232,7 +204,7 @@ impl<T: Float> Edge<T> {
             self._region_2.get()
         }
     }
-    fn set_region(&self, region: Region, piece: LineOrPoint<T>) {
+    fn set_region(&self, region: S::Region, piece: LineOrPoint<T>) {
         if piece.left() < self.geom.right() {
             self._region.set(region);
         } else {
@@ -242,38 +214,27 @@ impl<T: Float> Edge<T> {
     }
 }
 
-impl<T: Float> std::fmt::Debug for Edge<T> {
+impl<T: Float, S: Spec<T>> std::fmt::Debug for Edge<T, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let line = self.geom.line();
         f.debug_struct("Edge")
             .field(
                 "geom",
                 &format!(
-                    "({:?},{:?}) <-> ({:?},{:?})",
+                    "({:?}, {:?}) <-> ({:?}, {:?})",
                     line.start.x, line.start.y, line.end.x, line.end.y
                 ),
             )
-            .field("is_first", &self.is_first)
+            .field("idx", &self.idx)
             .field("region", &self._region)
             .finish()
     }
 }
 
-impl<T: Float> Cross for Edge<T> {
+impl<T: Float, S: Spec<T>> Cross for Edge<T, S> {
     type Scalar = T;
 
     fn line(&self) -> LineOrPoint<Self::Scalar> {
         self.geom
     }
-}
-
-pub(super) fn compare_crossings<X: Cross>(a: &Crossing<X>, b: &Crossing<X>) -> Ordering {
-    a.at_left.cmp(&b.at_left).then_with(|| {
-        let ord = a.line.partial_cmp(&b.line).unwrap();
-        if a.at_left {
-            ord
-        } else {
-            ord.reverse()
-        }
-    })
 }

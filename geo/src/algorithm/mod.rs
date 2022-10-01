@@ -212,5 +212,13 @@ pub use vincenty_length::VincentyLength;
 pub mod winding_order;
 pub use winding_order::Winding;
 
+/// Determine whether `Geometry` `A` is completely within by `Geometry` `B`.
+pub mod within;
+pub use within::Within;
+
 /// Planar sweep algorithm and related utils
 pub mod sweep;
+
+/// Detect outliers in a group of points using [LOF](https://en.wikipedia.org/wiki/Local_outlier_factor)
+pub mod outlier_detection;
+pub use outlier_detection::OutlierDetection;

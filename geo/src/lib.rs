@@ -54,6 +54,10 @@
 //! - **[`HaversineLength`](HaversineLength)**: Calculate the geodesic length of a geometry using the haversine formula
 //! - **[`VincentyLength`](VincentyLength)**: Calculate the geodesic length of a geometry using Vincenty’s formula
 //!
+//! ## Outlier Detection
+//!
+//! - **[`OutlierDetection`](OutlierDetection)**: Detect outliers in a group of points using [LOF](https://en.wikipedia.org/wiki/Local_outlier_factor)
+//!
 //! ## Simplification
 //!
 //! - **[`Simplify`](Simplify)**: Simplify a geometry using the Ramer–Douglas–Peucker algorithm
@@ -92,6 +96,7 @@
 //!   intersection, if any, between two lines.
 //! - **[`Relate`](Relate)**: Topologically relate two geometries based on
 //!   [DE-9IM](https://en.wikipedia.org/wiki/DE-9IM) semantics.
+//! - **[`Within`]**: Calculate if a geometry lies completely within another geometry.
 //!
 //! ## Winding
 //!
@@ -191,8 +196,6 @@ extern crate proj;
 extern crate rstar;
 
 pub use crate::algorithm::*;
-#[allow(deprecated)]
-pub use crate::traits::ToGeo;
 pub use crate::types::Closest;
 
 pub use geo_types::{coord, line_string, point, polygon, CoordFloat, CoordNum};
@@ -203,7 +206,6 @@ pub use geometry::*;
 /// This module includes all the functions of geometric calculations
 pub mod algorithm;
 mod geometry_cow;
-mod traits;
 mod types;
 mod utils;
 pub(crate) use geometry_cow::GeometryCow;
