@@ -15,7 +15,7 @@ pub trait MultiLineStringTrait<'a>: Send + Sync {
 
     /// Access to a specified line in this MultiLineString
     /// Will return None if the provided index is out of bounds
-    fn line(&'a self, i: usize) -> Option<&Self::ItemType>;
+    fn line(&'a self, i: usize) -> Option<Self::ItemType>;
 }
 
 impl<'a> MultiLineStringTrait<'a> for MultiLineString<f64> {
@@ -30,7 +30,7 @@ impl<'a> MultiLineStringTrait<'a> for MultiLineString<f64> {
         self.0.len()
     }
 
-    fn line(&'a self, i: usize) -> Option<&Self::ItemType> {
-        self.0.get(i)
+    fn line(&'a self, i: usize) -> Option<Self::ItemType> {
+        self.0.get(i).cloned()
     }
 }

@@ -8,7 +8,7 @@ pub trait PolygonTrait<'a>: Send + Sync {
     type Iter: Iterator<Item = &'a Self::ItemType>;
 
     /// The exterior ring of the polygon
-    fn exterior(&'a self) -> &Self::ItemType;
+    fn exterior(&'a self) -> Self::ItemType;
 
     // /// An iterator of the interior rings of this Polygon
     // fn interiors(&'a self) -> Self::Iter;
@@ -18,22 +18,22 @@ pub trait PolygonTrait<'a>: Send + Sync {
 
     /// Access to a specified interior ring in this Polygon
     /// Will return None if the provided index is out of bounds
-    fn interior(&'a self, i: usize) -> Option<&Self::ItemType>;
+    fn interior(&'a self, i: usize) -> Option<Self::ItemType>;
 }
 
 impl<'a> PolygonTrait<'a> for Polygon<f64> {
     type ItemType = LineString;
     type Iter = Iter<'a, Self::ItemType>;
 
-    fn exterior(&'a self) -> &Self::ItemType {
-        self.exterior()
+    fn exterior(&'a self) -> Self::ItemType {
+        self.exterior().clone()
     }
 
     fn num_interiors(&'a self) -> usize {
         self.interiors().len()
     }
 
-    fn interior(&'a self, i: usize) -> Option<&Self::ItemType> {
-        self.interiors().get(i)
+    fn interior(&'a self, i: usize) -> Option<Self::ItemType> {
+        self.interiors().get(i).cloned()
     }
 }

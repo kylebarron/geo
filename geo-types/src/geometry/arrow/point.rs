@@ -1,7 +1,7 @@
 use crate::point::Point;
 use arrow2::array::{Array, PrimitiveArray, StructArray};
 
-pub fn point_index<'a>(array: &StructArray, index: usize) -> Option<Point> {
+pub fn point_index(array: &StructArray, index: usize) -> Option<Point> {
     if array.is_null(index) {
         return None;
     }

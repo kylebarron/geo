@@ -7,7 +7,7 @@ use std::slice::Iter;
 use super::point::point_index;
 
 /// A struct representing a non-null single LineString geometry
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ArrowLineStringScalar {
     coords: StructArray,
 }
@@ -25,10 +25,7 @@ impl<'a> LineStringTrait<'a> for ArrowLineStringScalar {
     }
 }
 
-pub fn line_string_index<'a>(
-    array: &'_ ListArray<i64>,
-    index: usize,
-) -> Option<ArrowLineStringScalar> {
+pub fn line_string_index(array: &'_ ListArray<i64>, index: usize) -> Option<ArrowLineStringScalar> {
     if array.is_null(index) {
         return None;
     }

@@ -13,7 +13,7 @@ pub trait MultiPointTrait<'a>: Send + Sync {
 
     /// Access to a specified point in this MultiPoint
     /// Will return None if the provided index is out of bounds
-    fn point(&'a self, i: usize) -> Option<&Self::ItemType>;
+    fn point(&'a self, i: usize) -> Option<Self::ItemType>;
 }
 
 impl<'a> MultiPointTrait<'a> for MultiPoint<f64> {
@@ -28,7 +28,7 @@ impl<'a> MultiPointTrait<'a> for MultiPoint<f64> {
         self.0.len()
     }
 
-    fn point(&'a self, i: usize) -> Option<&Self::ItemType> {
-        self.0.get(i)
+    fn point(&'a self, i: usize) -> Option<Self::ItemType> {
+        self.0.get(i).cloned()
     }
 }

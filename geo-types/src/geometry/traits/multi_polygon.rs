@@ -14,7 +14,7 @@ pub trait MultiPolygonTrait<'a>: Send + Sync {
 
     /// Access to a specified polygon in this MultiPolygon
     /// Will return None if the provided index is out of bounds
-    fn polygon(&'a self, i: usize) -> Option<&Self::ItemType>;
+    fn polygon(&'a self, i: usize) -> Option<Self::ItemType>;
 }
 
 impl<'a> MultiPolygonTrait<'a> for MultiPolygon<f64> {
@@ -29,7 +29,7 @@ impl<'a> MultiPolygonTrait<'a> for MultiPolygon<f64> {
         self.0.len()
     }
 
-    fn polygon(&'a self, i: usize) -> Option<&Self::ItemType> {
-        self.0.get(i)
+    fn polygon(&'a self, i: usize) -> Option<Self::ItemType> {
+        self.0.get(i).cloned()
     }
 }
