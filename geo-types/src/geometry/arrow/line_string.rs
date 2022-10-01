@@ -1,0 +1,39 @@
+use crate::traits::line_string::LineStringTrait;
+use crate::Point;
+use arrow2::array::Array;
+use arrow2::array::{ListArray, StructArray};
+use std::slice::Iter;
+
+use super::point::point_index;
+
+/// A struct representing a non-null single LineString geometry
+#[derive(Debug)]
+pub struct ArrowLineStringScalar {
+    coords: StructArray,
+}
+
+impl<'a> LineStringTrait<'a> for ArrowLineStringScalar {
+    type ItemType = Point;
+    type Iter = Iter<'a, Self::ItemType>;
+
+    fn num_points(&'a self) -> usize {
+        self.coords.len()
+    }
+
+    fn point(&'a self, index: usize) -> Option<Self::ItemType> {
+        point_index(&self.coords, index)
+    }
+}
+
+pub fn line_string_index<'a>(
+    array: &'_ ListArray<i64>,
+    index: usize,
+) -> Option<ArrowLineStringScalar> {
+    if array.is_null(index) {
+        return None;
+    }
+
+    let item = array.value(index);
+    let coords = item.as_any().downcast_ref::<StructArray>().unwrap().clone();
+    Some(ArrowLineStringScalar { coords })
+}
