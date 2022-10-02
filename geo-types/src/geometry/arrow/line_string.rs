@@ -2,7 +2,6 @@ use crate::traits::line_string::LineStringTrait;
 use crate::Point;
 use arrow2::array::Array;
 use arrow2::array::{ListArray, StructArray};
-use std::slice::Iter;
 
 use super::point::point_index;
 
@@ -12,15 +11,15 @@ pub struct ArrowLineStringScalar {
     coords: StructArray,
 }
 
-impl<'a> LineStringTrait<'a> for ArrowLineStringScalar {
+impl LineStringTrait for ArrowLineStringScalar {
     type ItemType = Point;
-    type Iter = Iter<'a, Self::ItemType>;
+    // type Iter = Iter<'a, Self::ItemType>;
 
-    fn num_points(&'a self) -> usize {
+    fn num_points(&self) -> usize {
         self.coords.len()
     }
 
-    fn point(&'a self, index: usize) -> Option<Self::ItemType> {
+    fn point(&self, index: usize) -> Option<Self::ItemType> {
         point_index(&self.coords, index)
     }
 }

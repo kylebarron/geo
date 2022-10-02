@@ -4,7 +4,7 @@ use std::slice::Iter;
 use super::line_string::LineStringTrait;
 
 pub trait MultiLineStringTrait<'a>: Send + Sync {
-    type ItemType: 'a + LineStringTrait<'a>;
+    type ItemType: 'a + LineStringTrait;
     type Iter: Iterator<Item = &'a Self::ItemType>;
 
     /// An iterator over the LineStrings in this MultiLineString

@@ -4,7 +4,7 @@ use std::slice::Iter;
 use super::line_string::LineStringTrait;
 
 pub trait PolygonTrait<'a>: Send + Sync {
-    type ItemType: 'a + LineStringTrait<'a>;
+    type ItemType: 'a + LineStringTrait;
     type Iter: Iterator<Item = &'a Self::ItemType>;
 
     /// The exterior ring of the polygon
