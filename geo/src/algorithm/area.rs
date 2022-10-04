@@ -81,6 +81,7 @@ pub(crate) fn twice_signed_ring_area_trait(linestring: impl LineStringTrait) -> 
         c2.1 -= shift.y();
 
         let line = Line::from([c1, c2]);
+        println!("line {:?}", line);
         tmp += line.determinant();
     }
 
