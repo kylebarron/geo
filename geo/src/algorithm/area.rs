@@ -71,7 +71,7 @@ pub(crate) fn twice_signed_ring_area_trait(linestring: impl LineStringTrait) -> 
     let shift = linestring.point(0).unwrap();
 
     let mut tmp = 0_f64;
-    for i in (0..linestring.num_points()).step_by(2) {
+    for i in 0..linestring.num_points() - 2 {
         let mut c1 = linestring.point(i).unwrap().x_y();
         c1.0 -= shift.x();
         c1.1 -= shift.y();
