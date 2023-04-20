@@ -6,8 +6,12 @@ use std::iter::Cloned;
 use std::slice::Iter;
 
 pub trait LineStringTrait<'a>: Send + Sync {
-    type ItemType: 'a + PointTrait;
-    type Iter: Iterator<Item = Self::ItemType>;
+    type T: CoordNum + Send + Sync;
+    type ItemType: 'a + PointTrait<T = Self::T> + PartialEq;
+    type Iter: ExactSizeIterator + Iterator<Item = Self::ItemType>;
+
+    type LineItemType
+    type LineIter
 
     /// An iterator over the points in this LineString
     fn points(&'a self) -> Self::Iter;
@@ -18,9 +22,28 @@ pub trait LineStringTrait<'a>: Send + Sync {
     /// Access to a specified point in this LineString
     /// Will return None if the provided index is out of bounds
     fn point(&'a self, i: usize) -> Option<Self::ItemType>;
+
+    fn first_point(&'a self) -> Option<Self::ItemType> {
+        if self.num_points() == 0 {
+            None
+        } else {
+            self.point(0)
+        }
+    }
+
+    fn last_point(&'a self) -> Option<Self::ItemType> {
+        if self.num_points() == 0 {
+            None
+        } else {
+            self.point(self.num_points() - 1)
+        }
+    }
+
+    fn lines(&'a self) -> impl ExactSizeIterator + Iterator<Item = Line<T>> + '_;
 }
 
 impl<'a, T: CoordNum + Send + Sync + 'a> LineStringTrait<'a> for LineString<T> {
+    type T = T;
     type ItemType = Coord<T>;
     type Iter = Cloned<Iter<'a, Self::ItemType>>;
 
@@ -38,6 +61,7 @@ impl<'a, T: CoordNum + Send + Sync + 'a> LineStringTrait<'a> for LineString<T> {
 }
 
 impl<'a, T: CoordNum + Send + Sync + 'a> LineStringTrait<'a> for &LineString<T> {
+    type T = T;
     type ItemType = Coord<T>;
     type Iter = Cloned<Iter<'a, Self::ItemType>>;
 
